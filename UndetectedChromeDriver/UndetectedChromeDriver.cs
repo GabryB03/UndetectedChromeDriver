@@ -1,25 +1,25 @@
 ﻿using Newtonsoft.Json;
 using OpenQA.Selenium.Chrome;
-using System;
+using OpenQA.Selenium;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
-using System.Text;
+using System.Net;
 using System.Text.RegularExpressions;
+using System.Text;
 using System.Threading;
+using System;
+using System.Linq;
+using OpenQA.Selenium.Support.UI;
 
-namespace SeleniumUndetectedChromeDriver
+namespace UndetectedChromeDriver
 {
     public class UndetectedChromeDriver : ChromeDriver
     {
-        private UndetectedChromeDriver(ChromeDriverService service, ChromeOptions options, 
-            TimeSpan commandTimeout) : base(service, options, commandTimeout) { }
+        private UndetectedChromeDriver(ChromeDriverService service, ChromeOptions options, TimeSpan commandTimeout) : base(service, options, commandTimeout) { }
 
         private bool _headless = false;
         private ChromeOptions _options = null;
@@ -28,150 +28,69 @@ namespace SeleniumUndetectedChromeDriver
         private bool _keepUserDataDir = true;
         private string _userDataDir = null;
 
-        /*
-            Creates a new instance of the chrome driver.
-            
-            Parameters
-            ----------
-
-            options: ChromeOptions, optional, default: null 
-                Used to define browser behavior.
-
-            userDataDir: str, optional, default: null
-                Set chrome user profile directory.
-                creates a temporary profile if userDataDir is null,
-                and automatically deletes it after exiting.
-
-            driverExecutablePath: str, required
-                Set chrome driver executable file path. (patches new binary)
-
-            browserExecutablePath: str, optional, default: null
-                Set browser executable file path.
-                default using $PATH to execute.
-
-            logLevel: int, optional, default: 0
-                Set chrome logLevel.
-
-            headless: bool, optional, default: false
-                Specifies to use the browser in headless mode.
-                warning: This reduces undetectability and is not fully supported.
-
-            suppressWelcome: bool, optional, default: true
-                First launch using the welcome page.
-
-            hideCommandPromptWindow: bool, optional, default: false
-                Hide selenium command prompt window.  
-
-            commandTimeout: TimeSpan, optional, default: null
-                The maximum amount of time to wait for each command.  
-                default value is 60 seconds.
-
-            prefs: Dictionary<string, object>, optional, default: null
-                Prefs is meant to store lightweight state that reflects user preferences.
-                dict value can be value or json.
-
-            configureService: Action<ChromeDriverService>, optional, default: null
-                Initialize configuration ChromeDriverService.
-        */
-
-        /// <summary>
-        /// Creates a new instance of the chrome driver.
-        /// </summary>
-        /// <param name="options">Used to define browser behavior.</param>
-        /// <param name="userDataDir">Set chrome user profile directory.
-        /// creates a temporary profile if userDataDir is null,
-        /// and automatically deletes it after exiting.</param>
-        /// <param name="driverExecutablePath">Set chrome driver executable file path. (patches new binary)</param>
-        /// <param name="browserExecutablePath">Set browser executable file path.
-        /// default using $PATH to execute.</param>
-        /// <param name="logLevel">Set chrome logLevel.</param>
-        /// <param name="headless">Specifies to use the browser in headless mode.
-        /// warning: This reduces undetectability and is not fully supported.</param>
-        /// <param name="suppressWelcome">First launch using the welcome page.</param>
-        /// <param name="hideCommandPromptWindow">Hide selenium command prompt window.</param>
-        /// <param name="commandTimeout">The maximum amount of time to wait for each command.
-        /// default value is 60 seconds.</param>
-        /// <param name="prefs">Prefs is meant to store lightweight state that reflects user preferences.
-        /// dict value can be value or json.</param>
-        /// <param name="configureService">Initialize configuration ChromeDriverService.</param>
-        /// <returns>UndetectedChromeDriver</returns>
-        public static UndetectedChromeDriver Create(
-            ChromeOptions options = null,
-            string userDataDir = null,
-            string driverExecutablePath = null,
-            string browserExecutablePath = null,
-            int logLevel = 0,
-            bool headless = false,
-            bool suppressWelcome = true,
-            bool hideCommandPromptWindow = false,
-            TimeSpan? commandTimeout = null,
-            Dictionary<string, object> prefs = null,
-            Action<ChromeDriverService> configureService = null)
+        public static UndetectedChromeDriver Create(ChromeOptions options = null, string userDataDir = null, string driverExecutablePath = null, string browserExecutablePath = null, int logLevel = 0, bool headless = false, bool suppressWelcome = true, bool hideCommandPromptWindow = false, TimeSpan? commandTimeout = null, Dictionary<string, object> prefs = null, Action<ChromeDriverService> configureService = null)
         {
-            //----- Patcher ChromeDriver -----
-            var patcher = new Patcher(
-                driverExecutablePath);
-            patcher.Auto();
-            //----- Patcher ChromeDriver -----
+            Patcher patcher = new Patcher(driverExecutablePath);
+            patcher.PatchAll();
 
-            //----- Options -----
             if (options == null)
+            {
                 options = new ChromeOptions();
-            //----- Options -----
+            }
 
-            //----- DebugPort -----
             if (options.DebuggerAddress != null)
+            {
                 throw new Exception("Options is already used, please create new ChromeOptions.");
-            var debugHost = "127.0.0.1";
-            var debugPort = findFreePort();
+            }
+
+            string debugHost = "127.0.0.1";
+            int debugPort = FindFreePort();
             options.AddArgument($"--remote-debugging-host={debugHost}");
             options.AddArgument($"--remote-debugging-port={debugPort}");
             options.DebuggerAddress = $"{debugHost}:{debugPort}";
-            //----- DebugPort -----
 
-            //----- UserDataDir -----
-            var keepUserDataDir = true;
-            var userDataDirArg = options.Arguments
-                .Select(it => Regex.Match(it,
-                    @"(?:--)?user-data-dir(?:[ =])?(.*)"))
-                .Select(it => it.Groups[1].Value)
-                .FirstOrDefault(it => !string.IsNullOrEmpty(it));
+            bool keepUserDataDir = true;
+            string userDataDirArg = options.Arguments.Select(it => Regex.Match(it, @"(?:--)?user-data-dir(?:[ =])?(.*)")).Select(it => it.Groups[1].Value).FirstOrDefault(it => !string.IsNullOrEmpty(it));
+
             if (userDataDirArg != null)
+            {
                 userDataDir = userDataDirArg;
+            }
             else
             {
                 if (userDataDir == null)
                 {
                     keepUserDataDir = false;
-                    userDataDir = Path.Combine(
-                        Path.GetTempPath(), Guid.NewGuid().ToString());
+                    userDataDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
                 }
+
                 options.AddArgument($"--user-data-dir={userDataDir}");
             }
-            //----- UserDataDir -----
 
-            //----- Language -----
-            var language = CultureInfo.CurrentCulture.Name;
-            if(!options.Arguments.Any(it => it.Contains("--lang")))
+            string language = CultureInfo.CurrentCulture.Name;
+
+            if (!options.Arguments.Any(it => it.Contains("--lang")))
+            {
                 options.AddArgument($"--lang={language}");
-            //----- Language -----
+            }
 
-            //----- BinaryLocation -----
             if (browserExecutablePath == null)
             {
-                browserExecutablePath = callFindChromeExecutable();
+                browserExecutablePath = FindChromeExecutable();
+
                 if (browserExecutablePath == null)
+                {
                     throw new Exception("Not found chrome.exe.");
+                }
             }
+
             options.BinaryLocation = browserExecutablePath;
-            //----- BinaryLocation -----
 
-            //----- SuppressWelcome -----
             if (suppressWelcome)
+            {
                 options.AddArguments("--no-default-browser-check", "--no-first-run");
-            //----- SuppressWelcome -----
+            }
 
-            //----- Headless -----
             if (headless)
             {
                 options.AddArguments("--headless");
@@ -179,61 +98,61 @@ namespace SeleniumUndetectedChromeDriver
                 options.AddArguments("--start-maximized");
                 options.AddArguments("--no-sandbox");
             }
-            //----- Headless -----
 
-            //----- LogLevel -----
             options.AddArguments($"--log-level={logLevel}");
-            //----- LogLevel -----
 
-            //----- Prefs -----
             if (prefs != null)
-                handlePrefs(userDataDir, prefs);
-            //----- Prefs -----
+            {
+                HandlePrefs(userDataDir, prefs);
+            }
 
-            //----- Fix exit_type -----
             try
             {
-                var filePath = Path.Combine(userDataDir, @"Default/Preferences");
-                var json = File.ReadAllText(filePath, 
-                    Encoding.GetEncoding("ISO-8859-1"));
-                var regex = new Regex(@"(?<=exit_type"":)(.*?)(?=,)");
-                var exitType = regex.Match(json).Value;
+                string filePath = Path.Combine(userDataDir, @"Default/Preferences");
+                string json = File.ReadAllText(filePath, Encoding.GetEncoding("ISO-8859-1"));
+                Regex regex = new Regex(@"(?<=exit_type"":)(.*?)(?=,)");
+                string exitType = regex.Match(json).Value;
+
                 if (exitType != "" && exitType != "null")
                 {
                     json = regex.Replace(json, "null");
-                    File.WriteAllText(filePath, json, 
-                        Encoding.GetEncoding("ISO-8859-1"));
+                    File.WriteAllText(filePath, json, Encoding.GetEncoding("ISO-8859-1"));
                 }
             }
-            catch (Exception) { }
-            //----- Fix exit_type -----
+            catch
+            {
 
-            //----- Start Process -----
-            var args = options.Arguments
-                .Select(it => it.Trim())
-                .Aggregate("", (r, it) => r + " " +
-                    (it.Contains(" ") ? $"\"{it}\"" : it));
-            var info = new ProcessStartInfo(options.BinaryLocation, args);
+            }
+
+            string args = options.Arguments.Select(it => it.Trim()).Aggregate("", (r, it) => r + " " + (it.Contains(" ") ? $"\"{it}\"" : it));
+            ProcessStartInfo info = new ProcessStartInfo(options.BinaryLocation, args);
+
             info.UseShellExecute = false;
             info.RedirectStandardInput = true;
             info.RedirectStandardOutput = true;
             info.RedirectStandardError = true;
-            var browser = Process.Start(info);
-            //----- Start Process -----
 
-            //----- Create ChromeDriver -----
+            Process browser = Process.Start(info);
+
             if (driverExecutablePath == null)
+            {
                 throw new Exception("driverExecutablePath is required.");
-            var service = ChromeDriverService.CreateDefaultService(
-                Path.GetDirectoryName(driverExecutablePath),
-                Path.GetFileName(driverExecutablePath));
+            }
+
+            ChromeDriverService service = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName(driverExecutablePath), Path.GetFileName(driverExecutablePath));
             service.HideCommandPromptWindow = hideCommandPromptWindow;
+
             if (configureService != null)
+            {
                 configureService(service);
+            }
+
             if (commandTimeout == null)
+            {
                 commandTimeout = TimeSpan.FromSeconds(60);
-            var driver = new UndetectedChromeDriver(service, options, commandTimeout.Value);
-            //----- Create ChromeDriver -----
+            }
+
+            UndetectedChromeDriver driver = new UndetectedChromeDriver(service, options, commandTimeout.Value);
 
             driver._headless = headless;
             driver._options = options;
@@ -241,20 +160,25 @@ namespace SeleniumUndetectedChromeDriver
             driver._browser = browser;
             driver._keepUserDataDir = keepUserDataDir;
             driver._userDataDir = userDataDir;
+
             return driver;
         }
-
-        // override this.Navigate().GoToUrl()
         public void GoToUrl(string url)
         {
             if (_headless)
-                configureHeadless();
-            if (hasCdcProps())
-                hookRemoveCdcProps();
+            {
+                ConfigureHeadless();
+            }
+
+            if (HasCDCProps())
+            {
+                HookRemoveCDCProps();
+            }
+
             Navigate().GoToUrl(url);
         }
 
-        private void configureHeadless()
+        private void ConfigureHeadless()
         {
             if (ExecuteScript("return navigator.webdriver") != null)
             {
@@ -277,6 +201,7 @@ namespace SeleniumUndetectedChromeDriver
                             });
                          "
                     });
+
                 ExecuteCdpCommand(
                     "Network.setUserAgentOverride",
                     new Dictionary<string, object>
@@ -286,6 +211,7 @@ namespace SeleniumUndetectedChromeDriver
                             "return navigator.userAgent"
                         )).Replace("Headless", "")
                     });
+
                 ExecuteCdpCommand(
                     "Page.addScriptToEvaluateOnNewDocument",
                     new Dictionary<string, object>
@@ -300,9 +226,9 @@ namespace SeleniumUndetectedChromeDriver
             }
         }
 
-        private bool hasCdcProps()
+        private bool HasCDCProps()
         {
-            var props = (ReadOnlyCollection<object>)ExecuteScript(
+            ReadOnlyCollection<object> props = (ReadOnlyCollection<object>)ExecuteScript(
                 @"
                     let objectToInspect = window,
                         result = [];
@@ -311,10 +237,11 @@ namespace SeleniumUndetectedChromeDriver
                       objectToInspect = Object.getPrototypeOf(objectToInspect); }
                     return result.filter(i => i.match(/.+_.+_(Array|Promise|Symbol)/ig))
                  ");
+
             return props.Count > 0;
         }
 
-        private void hookRemoveCdcProps()
+        private void HookRemoveCDCProps()
         {
             ExecuteCdpCommand(
                 "Page.addScriptToEvaluateOnNewDocument",
@@ -333,112 +260,54 @@ namespace SeleniumUndetectedChromeDriver
                 });
         }
 
-        private static string callFindChromeExecutable()
+        private static string FindChromeExecutable()
         {
-            var result = "";
-#if (NET48 || NET47 || NET46 || NET45)
-            result = findChromeExecutable();
-#else
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                result = findChromeExecutable();
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                result = findChromeExecutableLinux();
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                result = findChromeExecutableMacos();
-#endif
-            return result;
-        }
+            List<string> candidates = new List<string>();
 
-        private static string findChromeExecutable()
-        {
-            var candidates = new List<string>();
-
-            foreach (var item in new[] {
+            foreach (string item in new[]
+            {
                 "PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"
             })
             {
-                foreach (var subitem in new[] {
+                foreach (string subitem in new[]
+                {
                     @"Google\Chrome\Application",
                     @"Google\Chrome Beta\Application",
                     @"Google\Chrome Canary\Application"
                 })
                 {
-                    var variable = Environment.GetEnvironmentVariable(item);
+                    string variable = Environment.GetEnvironmentVariable(item);
+
+                    if (item == "PROGRAMFILES" && variable.Contains("86"))
+                    {
+                        variable = variable.Replace(" (x86)", "");
+                    }
+
                     if (variable != null)
+                    {
                         candidates.Add(Path.Combine(variable, subitem, "chrome.exe"));
+                    }
                 }
             }
 
-            foreach (var candidate in candidates)
-                if (File.Exists(candidate))
-                    return candidate;
-            return null;
-        }
-
-        private static string findChromeExecutableLinux()
-        {
-            var candidates = new List<string>();
-
-            var variables = Environment.GetEnvironmentVariable("PATH")
-                .Split(Path.PathSeparator);
-            foreach (var item in variables)
+            foreach (string candidate in candidates)
             {
-                foreach (var subitem in new[] {
-                    "google-chrome",
-                    "chromium",
-                    "chromium-browser",
-                    "chrome",
-                    "google-chrome-stable",
-                })
+                if (File.Exists(candidate))
                 {
-                    candidates.Add(Path.Combine(item, subitem));
+                    return candidate;
                 }
             }
 
-            foreach (var candidate in candidates)
-                if (File.Exists(candidate))
-                    return candidate;
             return null;
         }
 
-        private static string findChromeExecutableMacos()
+        private static int FindFreePort()
         {
-            var candidates = new List<string>();
+            Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
-            var variables = Environment.GetEnvironmentVariable("PATH")
-                .Split(Path.PathSeparator);
-            foreach (var item in variables)
-            {
-                foreach (var subitem in new[] {
-                    "google-chrome",
-                    "chromium",
-                    "chromium-browser",
-                    "chrome",
-                    "google-chrome-stable",
-                })
-                {
-                    candidates.Add(Path.Combine(item, subitem));
-                }
-            }
-
-            candidates.AddRange(new string[] {
-                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-                "/Applications/Chromium.app/Contents/MacOS/Chromium"
-            });
-
-            foreach (var candidate in candidates)
-                if (File.Exists(candidate))
-                    return candidate;
-            return null;
-        }
-
-        private static int findFreePort()
-        {
-            var socket = new Socket(
-                AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             try
             {
-                var localEP = new IPEndPoint(IPAddress.Any, 0);
+                IPEndPoint localEP = new IPEndPoint(IPAddress.Any, 0);
                 socket.Bind(localEP);
                 localEP = (IPEndPoint)socket.LocalEndPoint;
                 return localEP.Port;
@@ -451,25 +320,27 @@ namespace SeleniumUndetectedChromeDriver
 
         protected override void Dispose(bool disposing)
         {
-            //_service.Dispose();
             base.Dispose(disposing);
 
             try
             {
                 _browser.Kill();
             }
-            catch (Exception) { }
+            catch
+            {
+
+            }
 
             if (!_keepUserDataDir)
             {
-                for (var i = 0; i < 5; i++)
+                for (int i = 0; i < 5; i++)
                 {
                     try
                     {
                         Directory.Delete(_userDataDir, true);
                         break;
                     }
-                    catch (Exception)
+                    catch
                     {
                         Thread.Sleep(100);
                     }
@@ -477,64 +348,143 @@ namespace SeleniumUndetectedChromeDriver
             }
         }
 
-        private static void handlePrefs(string userDataDir, Dictionary<string, object> prefs)
+        private static void HandlePrefs(string userDataDir, Dictionary<string, object> prefs)
         {
-            var defaultPath = Path.Combine(userDataDir, "Default");
+            string defaultPath = Path.Combine(userDataDir, "Default");
+
             if (!Directory.Exists(defaultPath))
+            {
                 Directory.CreateDirectory(defaultPath);
+            }
 
-            var newPrefs = new Dictionary<string, object>();
+            Dictionary<string, object> newPrefs = new Dictionary<string, object>();
+            string prefsFile = Path.Combine(defaultPath, "Preferences");
 
-            var prefsFile = Path.Combine(defaultPath, "Preferences");
             if (File.Exists(prefsFile))
             {
-                using (var fs = File.Open(prefsFile, FileMode.Open, FileAccess.Read))
-                using (var reader = new StreamReader(fs, Encoding.GetEncoding("ISO-8859-1")))
+                using (FileStream fs = File.Open(prefsFile, FileMode.Open, FileAccess.Read))
                 {
-                    try
+                    using (StreamReader reader = new StreamReader(fs, Encoding.GetEncoding("ISO-8859-1")))
                     {
-                        var json = reader.ReadToEnd();
-                        newPrefs = Json.DeserializeData(json);
+                        try
+                        {
+                            string json = reader.ReadToEnd();
+                            newPrefs = Json.DeserializeData(json);
+                        }
+                        catch
+                        {
+
+                        }
                     }
-                    catch (Exception) { }
                 }
             }
 
-            // merge key value into dict
-            void undotMerge(string key, object value, 
-                Dictionary<string, object> dict)
+
+            void UndotMerge(string key, object value, Dictionary<string, object> dict)
             {
                 if (key.Contains("."))
                 {
-                    var split = key.Split(new char[] { '.' }, 2);
-                    var k1 = split[0];
-                    var k2 = split[1];
+                    string[] split = key.Split(new char[] { '.' }, 2);
+                    string k1 = split[0];
+                    string k2 = split[1];
+
                     if (!dict.ContainsKey(k1))
+                    {
                         dict[k1] = new Dictionary<string, object>();
-                    undotMerge(k2, value, dict[k1] as Dictionary<string, object>);
+                    }
+
+                    UndotMerge(k2, value, dict[k1] as Dictionary<string, object>);
                     return;
                 }
+
                 dict[key] = value;
             }
 
             try
             {
-                foreach (var pair in prefs)
+                foreach (KeyValuePair<string, object> pair in prefs)
                 {
-                    undotMerge(pair.Key, pair.Value, newPrefs);
+                    UndotMerge(pair.Key, pair.Value, newPrefs);
                 }
             }
-            catch(Exception)
+            catch
             {
                 throw new Exception("Prefs merge faild.");
             }
 
-            using (var fs = File.Open(prefsFile, FileMode.OpenOrCreate, FileAccess.Write))
-            using (var writer = new StreamWriter(fs, Encoding.GetEncoding("ISO-8859-1")))
+            using (FileStream fs = File.Open(prefsFile, FileMode.OpenOrCreate, FileAccess.Write))
             {
-                var json = JsonConvert.SerializeObject(newPrefs);
-                writer.Write(json);
+                using (StreamWriter writer = new StreamWriter(fs, Encoding.GetEncoding("ISO-8859-1")))
+                {
+                    string json = JsonConvert.SerializeObject(newPrefs);
+                    writer.Write(json);
+                }
             }
+        }
+
+        private bool IsPageLoaded()
+        {
+            return (bool)ExecuteScript("return (document.readyState == \"complete\" || document.readyState == \"interactive\")");
+        }
+
+        private bool IsAjaxLoaded()
+        {
+            try
+            {
+                return (bool)ExecuteScript("var result = true; try { result = (typeof jQuery != 'undefined') ? jQuery.active == 0 : true } catch (e) {}; return result;");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public bool IsPageReady()
+        {
+            return IsPageLoaded() && IsAjaxLoaded();
+        }
+
+        public void MaximizeWindow()
+        {
+            Manage().Window.Maximize();
+        }
+
+        public bool IsElementLoaded(IWebElement element)
+        {
+            try
+            {
+                if (element == null)
+                {
+                    return false;
+                }
+
+                return element.Displayed && element.Enabled;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private Func<IWebDriver, IWebElement> ElementIsClickable(By locator)
+        {
+            return driver =>
+            {
+                IWebElement element = driver.FindElement(locator);
+                return IsPageReady() && (element != null && element.Displayed && element.Enabled) ? element : null;
+            };
+        }
+
+        public IWebElement FindLoadedElement(By locator)
+        {
+            WebDriverWait wait = new WebDriverWait(this, TimeSpan.FromDays(1));
+            IWebElement clickableElement = wait.Until(ElementIsClickable(locator));
+            return clickableElement;
+        }
+
+        public IWebElement FindLoadedElementByTagValue(string tagName, string tagValue)
+        {
+            return FindLoadedElement(By.CssSelector($"[{tagName}=\"{tagValue}\"]"));
         }
     }
 }
